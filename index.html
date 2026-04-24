@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Order Tool</title>
+
+<script src="https://www.dropbox.com/static/api/2/dropins.js"
+        id="dropboxjs"
+        data-app-key="1b9swniiqx18e6y"></script>
+
+<style>
+body { font-family: Arial; padding: 20px; }
+
+button {
+    padding: 10px;
+    margin: 5px;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Order Tool</h2>
+
+<button onclick="openDropbox()">📂 Open from Dropbox</button>
+
+<table border="1" id="table">
+<tbody></tbody>
+</table>
+
+<button onclick="addRow()">Add Row</button>
+
+<script>
+function addRow() {
+    let table = document.querySelector("#table tbody");
+
+    let row = document.createElement("tr");
+
+    row.innerHTML = `
+        <td><input placeholder="Document"></td>
+        <td><input placeholder="No."></td>
+        <td><input placeholder="Description"></td>
+    `;
+
+    table.appendChild(row);
+}
+
+function openDropbox() {
+    var options = {
+        success: function(files) {
+            fetch(files[0].link)
+                .then(res => res.text())
+                .then(text => {
+                    let data = JSON.parse(text);
+                    loadData(data);
+                });
+        },
+        cancel: function() {},
+        linkType: "direct",
+        multiselect: false,
+        extensions: [".json"]
+    };
+
+    Dropbox.choose(options);
+}
+
+function loadData(data) {
+    let tbody = document.querySelector("#table tbody");
+    tbody.innerHTML = "";
+
+    data.forEach(rowData => {
+        let row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td><input value="${rowData[0] || ''}"></td>
+            <td><input value="${rowData[1] || ''}"></td>
+            <td><input value="${rowData[2] || ''}"></td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+</script>
+
+</body>
+</html>

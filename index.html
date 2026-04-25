@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Order Comparison Tool</title>
+
+<!-- DROPBOX -->
+<script src="https://www.dropbox.com/static/api/2/dropins.js"
+        id="dropboxjs"
+        data-app-key="1b9swniiqx18e6y"></script>
+
+<style>
+body { font-family: Arial, sans-serif; padding: 20px; }
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 25px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+}
+
+th { background: yellow; }
+
+input, textarea, select {
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    text-align: center;
+}
+
+textarea {
+    height: 45px;
+    text-align: left;
+}
+
+button {
+    padding: 6px 10px;
+    margin: 3px;
+    cursor: pointer;
+}
+
+.delete-btn { background: #ffcccc; }
+.move-btn { background: #ddebf7; }
+</style>
+</head>
+
+<body>
+
+<h2>INPUT SHEET</h2>
+
+<table id="inputTable">
+<thead>
+<tr>
+<th>DOCUMENT</th>
+<th>NO.</th>
+<th>DESCRIPTION</th>
+<th>L IN</th>
+<th>W IN</th>
+<th>THK IN</th>
+<th>L CM</th>
+<th>W CM</th>
+<th>THK CM</th>
+<th>PCS</th>
+<th>QTY SF</th>
+<th>QTY SQM</th>
+<th>PRICE TYPE</th>
+<th>PRICE</th>
+<th>AMOUNT</th>
+<th>UP</th>
+<th>DOWN</th>
+<th>DELETE</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<button onclick="addRow()">Add Row</button>
+<button onclick="saveFile()">Save File</button>
+<input type="file" onchange="loadFile(event)">
+<button onclick="openDropbox()">📂 Open from Dropbox</button>
+
+<h2>SUMMARY SHEET</h2>
+<div id="summaryArea"></div>
+
+<script>
+
+let colors = {};
+
+function randomColor() {
+    return "hsl(" + Math.floor(Math.random()*360) + ",70%,85%)";
+}
+
+function getColor(doc) {
+    if (!colors[doc]) colors[doc] = randomColor();
+    return colors[doc];
+}
+
+function inchToCm(input, target) {
+    let row = input.parentElement.parentElement;
+    let v = parseFloat(input.value);
+    if (!isNaN(v)) row.cells[target].children[0].value = (v*2.54).toFixed(2);
+}
+
+function cmToInch(input, target) {
+    let row = input.parentElement.parentElement;
+    let v = parseFloat(input.value);
+    if (!isNaN(v)) row.cells[target].children[0].value = (v/2.54).toFixed(2);
+}
+
+function computeRow(row) {
+    let l = parseFloat(row.cells[3].children[0].value);
+    let w = parseFloat(row.cells[4].children[0].value);
+    let pcs = parseFloat(row.cells[9].children[0].value);
+
+    if (!isNaN(l)&&!isNaN(w)&&!isNaN(pcs)) {
+        let sf = (l*w*pcs)/144;
+        let sqm = sf*0.092903;
+        row.cells[10].children[0].value = sf.toFixed(2);
+        row.cells[11].children[0].value = sqm.toFixed(2);
+    }
+
+    let price = parseFloat(row.cells[13].children[0].value);
+    let type = row.cells[12].children[0].value;
+    let amount = 0;
+
+    if (!isNaN(price)) {
+        if (type==="PC") amount = pcs*price;
+        if (type==="SQM") amount = row.cells[11].children[0].value*price;
+        if (type==="SF") amount = row.cells[10].children[0].value*price;
+    }
+
+    row.cells[14].children[0].value = amount ? amount.toFixed(2) : "";
+}
+
+function updateAll() {
+    let rows = document.querySelectorAll("#inputTable tbody tr");
+
+    rows.forEach(r=>{
+        let doc = r.cells[0].children[0].value;
+        r.style.background = doc ? getColor(doc) : "white";
+        computeRow(r);
+    });
+
+    buildSummary();
+}
+
+function addRow(data=null) {
+    let tr = document.createElement("tr");
+
+    tr.innerHTML = `
+<td><input oninput="updateAll()"></td>
+<td><input oninput="updateAll()"></td>
+<td><textarea oninput="updateAll()"></textarea></td>
+
+<td><input oninput="inchToCm(this,6);updateAll()"></td>
+<td><input oninput="inchToCm(this,7);updateAll()"></td>
+<td><input oninput="inchToCm(this,8);updateAll()"></td>
+
+<td><input oninput="cmToInch(this,3);updateAll()"></td>
+<td><input oninput="cmToInch(this,4);updateAll()"></td>
+<td><input oninput="cmToInch(this,5);updateAll()"></td>
+
+<td><input oninput="updateAll()"></td>
+<td><input readonly></td>
+<td><input readonly></td>
+
+<td>
+<select onchange="updateAll()">
+<option>PC</option>
+<option>SQM</option>
+<option>SF</option>
+</select>
+</td>
+
+<td><input oninput="updateAll()"></td>
+<td><input readonly></td>
+
+<td><button onclick="moveUp(this)">▲</button></td>
+<td><button onclick="moveDown(this)">▼</button></td>
+<td><button onclick="deleteRow(this)">Delete</button></td>
+`;
+
+    document.querySelector("#inputTable tbody").appendChild(tr);
+
+    if (data) {
+        let f = tr.querySelectorAll("input,textarea,select");
+        f.forEach((x,i)=>x.value=data[i]||"");
+    }
+
+    updateAll();
+}
+
+function deleteRow(btn){
+    btn.closest("tr").remove();
+    updateAll();
+}
+
+function moveUp(btn){
+    let r = btn.closest("tr");
+    if (r.previousElementSibling)
+        r.parentNode.insertBefore(r,r.previousElementSibling);
+}
+
+function moveDown(btn){
+    let r = btn.closest("tr");
+    if (r.nextElementSibling)
+        r.parentNode.insertBefore(r.nextElementSibling,r);
+}
+
+function buildSummary(){
+    let rows=document.querySelectorAll("#inputTable tbody tr");
+    let total=0;
+
+    rows.forEach(r=>{
+        let amt=parseFloat(r.cells[14].children[0].value);
+        if(!isNaN(amt)) total+=amt;
+    });
+
+    document.getElementById("summaryArea").innerHTML =
+        "<h3>TOTAL: "+total.toFixed(2)+"</h3>";
+}
+
+function saveFile(){
+    let rows=document.querySelectorAll("#inputTable tbody tr");
+    let data=[];
+
+    rows.forEach(r=>{
+        let f=r.querySelectorAll("input,textarea,select");
+        data.push([...f].map(x=>x.value));
+    });
+
+    let blob=new Blob([JSON.stringify(data)],{type:"application/json"});
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="order.json";
+    a.click();
+}
+
+function loadFile(e){
+    let file=e.target.files[0];
+    let reader=new FileReader();
+
+    reader.onload=function(){
+        let data=JSON.parse(reader.result);
+        let tbody=document.querySelector("#inputTable tbody");
+        tbody.innerHTML="";
+        data.forEach(d=>addRow(d));
+    };
+
+    reader.readAsText(file);
+}
+
+/* DROPBOX */
+function openDropbox() {
+    var options = {
+        success: function(files) {
+            fetch(files[0].link)
+                .then(res => res.text())
+                .then(text => {
+                    let data = JSON.parse(text);
+                    let tbody = document.querySelector("#inputTable tbody");
+                    tbody.innerHTML = "";
+                    data.forEach(rowData => addRow(rowData));
+                });
+        },
+        cancel: function() {},
+        linkType: "direct",
+        multiselect: false,
+        extensions: [".json"]
+    };
+    Dropbox.choose(options);
+}
+
+addRow();
+
+</script>
+
+</body>
+</html>
